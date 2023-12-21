@@ -4,8 +4,11 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const ejs = require('ejs');
 const mongoose = require('mongoose');
-const encrypt = require('mongoose-encryption');
-const mongodb = require('mongodb')
+// const encrypt = require('mongoose-encryption');
+const mongodb = require('mongodb');
+// const md5 = require('md5');
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
 
 
 const app = express();
@@ -21,18 +24,39 @@ const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'MongoDB connection error:'));
 db.once('open', () => { console.log('Connected to MongoDB'); });
 
-const userSchema =  new mongoose.Schema({
+const userSchema = new mongoose.Schema({
     email: String,
     password: String
 });
 
-userSchema.plugin(encrypt, {secret: process.env.SECRET, encryptedFields: ['password']});
+// userSchema.plugin(encrypt, {secret: process.env.SECRET, encryptedFields: ['password']});
 
 const User = mongoose.model("User", userSchema);
 
 app.get("/", (req, res) => {
     res.render("home");
 });
+
+app.route("/register")
+    .get((req, res) => {
+        res.render("register");
+    })
+    .post((req, res) => {
+        bcrypt.hash(req.body.password, saltRounds, (error, hash) => {
+            const newUser = new User({
+                email: req.body.username,
+                password: hash
+            });
+            newUser.save()
+                .then(() => {
+                    console.log("Added new user");
+                    res.render("secrets")
+                })
+                .catch(error => {
+                    console.log(error);
+                });
+        });
+    })
 
 app.route("/login")
     .get((req, res) => {
@@ -44,39 +68,14 @@ app.route("/login")
 
         User.findOne({ email: username })
             .then(foundUser => {
-                if (foundUser.password === password){
-                    res.render("secrets");
-                    console.log(foundUser.password);
-                }
-                
-        })
+                bcrypt.compare(password, foundUser.password, (error, result) => {
+                    if (result === true) {
+                        res.render("secrets");
+                        console.log(password);
+                    }
+                });
+            });
     });
-
-app.route("/register")
-    .get((req, res) => {
-        res.render("register");
-    })
-    .post((req, res) => {
-
-        const newUser = new User({
-            email: req.body.username,
-            password: req.body.password
-        })
-
-        newUser.save()
-            .then(() => {
-                console.log("Added new user");
-                res.render("secrets")
-            })
-            .catch(error => {
-                console.log(error);
-            })
-    })
-
-
-
-
-
 
 
 app.listen(port, () => {
